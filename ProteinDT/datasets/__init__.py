@@ -1,0 +1,11 @@
+from ProteinDT.datasets.dataset_SwissProtCLAP import SwissProtCLAPDataset
+from ProteinDT.datasets.dataset_RepresentationPair import RepresentationPairDataset, RepresentationPairWithRawDataDataset
+from ProteinDT.datasets.dataset_Protein import ProteinSequenceDataset
+
+from ProteinDT.datasets.dataset_SecondaryStructure import SecondaryStructureDataset
+
+from ProteinDT.datasets.dataset_Stability import StabilityDataset
+from ProteinDT.datasets.dataset_Villin import VillinDataset
+from ProteinDT.datasets.dataset_Pin1 import Pin1Dataset
+
+from ProteinDT.datasets.dataset_MISATO import MISATODataset, MISATODataLoader
