@@ -3,10 +3,12 @@ channels:
   - conda-forge
 dependencies:
   - python=3.7
+  - pip
   - numpy
   - networkx
   - scikit-learn
   - pytorch::pytorch=1.10
+  - pytorch::cpuonly # remove for GPU environment
   - transformers
   - lxml
   - lmdb # for TAPE
