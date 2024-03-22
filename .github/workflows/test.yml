@@ -28,6 +28,10 @@ jobs:
         miniforge-variant: Mambaforge
         miniforge-version: 'latest'
         use-mamba: true
+      # Installs fair-esm package into the activated conda environment without dependencies
+    - name: Install fair-esm
+      shell: bash --login {0}
+      run: pip install fair-esm[esmfold]==2.0.0 --no-dependencies # Override deepspeed==0.5
       # Installs ProteinDT package into the activated conda environment
     - name: Install ProteinDT
       shell: bash --login {0}
