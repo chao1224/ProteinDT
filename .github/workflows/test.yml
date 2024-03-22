@@ -1,0 +1,38 @@
+name: Tests
+on:
+- push
+- pull_request
+
+jobs:
+  # Installs the conda environment and ProteinDT package
+  install:
+    name: Test ProteinDT installation
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Could also test on the beta M1 macOS or other runners
+        # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories
+        os:
+        - ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    # Use mamba instead of conda
+    - name: Install conda environment
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: ProteinDT
+        environment-file: environment.yml
+        auto-activate-base: false
+        miniforge-variant: Mambaforge
+        miniforge-version: 'latest'
+        use-mamba: true
+      # Installs ProteinDT package into the activated conda environment
+    - name: Install ProteinDT
+      shell: bash --login {0}
+      run: pip install .
+      # Log conda environment contents
+    - name: Log conda environment
+      shell: bash --login {0}
+      run: conda list
