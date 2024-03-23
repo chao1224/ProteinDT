@@ -8,7 +8,7 @@ dependencies:
   - networkx
   - scikit-learn
   - pytorch::pytorch=1.10
-  - pytorch::cudatoolkit # pyg installs cudatoolkit even if cpuonly is requested
+  - nvidia::cudatoolkit # pyg installs cudatoolkit even if cpuonly is requested
   - transformers
   - lxml
   - lmdb # for TAPE
