@@ -1,0 +1,45 @@
+name: Tests
+on:
+- push
+- pull_request
+
+jobs:
+  # Installs the conda environment and ProteinDT package
+  install:
+    name: Test ProteinDT installation
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Could also test on the beta M1 macOS or other runners
+        # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories
+        os:
+        - ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    # Use mamba instead of conda
+    - name: Install conda environment
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: ProteinDT
+        environment-file: environment.yml
+        auto-activate-base: false
+        miniforge-variant: Mambaforge
+        miniforge-version: 'latest'
+        use-mamba: true
+      # Installs fair-esm package into the activated conda environment without dependencies
+    - name: Install fair-esm
+      shell: bash --login {0}
+      run: pip install fair-esm[esmfold]==2.0.0 --no-dependencies # Override deepspeed==0.5
+      # Installs ProteinDT package into the activated conda environment
+    - name: Install ProteinDT
+      shell: bash --login {0}
+      run: pip install .
+      # Log conda environment contents
+    - name: Log conda environment
+      shell: bash --login {0}
+      run: conda list
+    - name: Test ProteinDT import
+      shell: bash --login {0}
+      run: python -c 'from ProteinDT.models.model_ProteinText import ProteinTextModel'
