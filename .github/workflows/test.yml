@@ -40,3 +40,6 @@ jobs:
     - name: Log conda environment
       shell: bash --login {0}
       run: conda list
+    - name: Test ProteinDT import
+      shell: bash --login {0}
+      run: python -c 'from ProteinDT.models.model_SDE import VESDE'
