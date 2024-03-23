@@ -42,4 +42,4 @@ jobs:
       run: conda list
     - name: Test ProteinDT import
       shell: bash --login {0}
-      run: python -c 'from ProteinDT.models.model_SDE import VESDE'
+      run: python -c 'from ProteinDT.models.model_ProteinText import ProteinTextModel'
