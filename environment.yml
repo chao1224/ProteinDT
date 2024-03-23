@@ -8,6 +8,7 @@ dependencies:
   - networkx
   - scikit-learn
   - pytorch::pytorch=1.10
+  - pytorch::cudatoolkit # pyg installs cudatoolkit even if cpuonly is requested
   - transformers
   - lxml
   - lmdb # for TAPE
@@ -27,5 +28,5 @@ dependencies:
   - einops
   - mdtraj
   - pip:
-      - git+https://github.com/NVIDIA/dllogger@0540a43971f4a8a16693a9de9de73c1072020769
+#      - git+https://github.com/NVIDIA/dllogger@0540a43971f4a8a16693a9de9de73c1072020769
 #      - git+https://github.com/aqlaboratory/openfold@4b41059694619831a7db195b7e0988fc4ff3a307
