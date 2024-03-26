@@ -47,7 +47,7 @@ class SDE(abc.ABC):
 
     def discretize(self, x, t):
         """Discretize the SDE in the form: x_{i+1} = x_i + f_i(x_i) + G_i z_i.
-        Useful for reverse diffusion sampling and probabiliy flow sampling.
+        Useful for reverse diffusion sampling and probability flow sampling.
         Defaults to Euler-Maruyama discretization.
         Args:
             x: a torch tensor
