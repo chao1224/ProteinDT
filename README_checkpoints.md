@@ -1,1 +1,0 @@
-# Checkpoints for ProteinDT
