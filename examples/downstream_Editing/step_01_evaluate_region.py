@@ -4,7 +4,6 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import string
-import mdtraj
 import re
 
 import torch
@@ -15,38 +14,19 @@ from torch.utils.data import DataLoader
 
 from utils import ProteinDataset, ProteinSeqDataset, text_prompt_dict, load_oracle_evaluator, evaluate, analyze
 
+
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.models.esm.openfold_utils.protein import to_pdb, Protein as OFProtein
 from transformers.models.esm.openfold_utils.feats import atom14_to_atom37
 
 
 @torch.no_grad()
-def save_and_evaluate_PDB_list(PDB_list, idx_list, PDB_output_folder):
-    DSSP_list = []
-    valid_idx_set = set()
+def save_PDB_list(PDB_list, idx_list, PDB_output_folder):
     for PDB, idx in zip(PDB_list, idx_list):
-        file_name = os.path.join(PDB_output_folder, "{}.pdb".format(idx))
+        file_name = os.path.join(PDB_output_folder, "{}.txt".format(idx))
         f = open(file_name, "w")
         f.write("".join(PDB))
-        f.flush()
-        f.close()
-        
-        try:
-            # MDtraj
-            traj = mdtraj.load(file_name)
-            # SS calculation
-            pdb_ss = mdtraj.compute_dssp(traj, simplified=True)[0]  # (L, )
-
-            ss_count = {
-                'alpha': np.sum(pdb_ss == 'H'),
-                'beta': np.sum(pdb_ss == 'E'),
-            }
-            print("ss_count", ss_count)
-            DSSP_list.append(ss_count)
-            valid_idx_set.add(idx)
-        except Exception as e:
-            print(f'[Warning] Mdtraj failed with error {e}')
-    return DSSP_list, valid_idx_set
+    return
 
 
 def convert_outputs_to_pdb(outputs):
@@ -75,20 +55,30 @@ def convert_outputs_to_pdb(outputs):
 
 @torch.no_grad()
 def evaluate_folding(protein_sequence_list):
-    PDB_data_list, idx_list = [], []
-    for idx, protein_sequence in enumerate(tqdm(protein_sequence_list)):
+    PDB_data_list, idx_list, plddt_value_list = [], [], []
+    for idx, protein_sequence in enumerate(protein_sequence_list):
+        print("protein_sequence", protein_sequence)
 
         tokenized_input = folding_tokenizer(protein_sequence, return_tensors="pt", add_special_tokens=False)['input_ids']
         tokenized_input = tokenized_input.to(device)
 
         output = folding_model(tokenized_input)
+        plddt_value = output["plddt"].squeeze(0)
+        tokenized_input = tokenized_input.squeeze(0)
+        
+        plddt_value_total = 0
+        L = plddt_value.shape[0]
+        for i in range(L):
+            plddt_value_total += plddt_value[i][tokenized_input[i]]
+        plddt_value_mean = (plddt_value_total / L).item()
 
         PDB_list = convert_outputs_to_pdb(output)
 
         PDB_data_list.extend(PDB_list)
         idx_list.append(idx)
+        plddt_value_list.append(plddt_value_mean)
 
-    return PDB_data_list, idx_list
+    return PDB_data_list, idx_list, plddt_value_list
 
 
 if __name__ == "__main__":
@@ -99,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--mutation_number", type=int, default=1)
 
-    parser.add_argument("--editing_task", type=str, default="alpha")    
+    parser.add_argument("--editing_task", type=str, default="region")    
     parser.add_argument("--dataset_size", type=int, default=None)
     parser.add_argument("--text_prompt_id", type=int, default=101)
 
@@ -115,7 +105,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print("arguments", args)
 
-    assert args.editing_task in ["alpha", "beta"]
+    assert args.editing_task in ["region"]
 
     random.seed(args.seed)
     os.environ['PYTHONHASHSEED'] = str(args.seed)
@@ -129,8 +119,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     folding_tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1", cache_dir="../../data/temp_pretrained_ESMFold")
-    folding_model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", low_cpu_mem_usage=True, cache_dir="../../data/temp_pretrained_ESMFold").to(device)
-    folding_model.trunk.set_chunk_size(512)
+    folding_model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", cache_dir="../../data/temp_pretrained_ESMFold").to(device)
     
     ##### Load pretrained protein model
     if args.protein_backbone_model == "ProtBERT":
@@ -152,106 +141,65 @@ if __name__ == "__main__":
         args.output_text_file_path = os.path.join(args.output_folder, "step_01_editing.txt")
     
     f = open(args.output_text_file_path, "r")
-    input_protein_sequence_list, input_eval_list, edited_protein_sequence_list, edited_eval_list = [], [], [], []
+    input_protein_sequence_list, edited_protein_sequence_list = [], []
     for line in f.readlines():
         if line.startswith("input"):
             line = line.strip().split(",")
             input_protein_sequence_list.append(line[1])
             value = line[2].replace("[", "").replace("]", "")
-            input_eval_list.append(float(value))
         elif line.startswith("output"):
             line = line.strip().split(",")
             edited_protein_sequence = line[1]
             edited_protein_sequence = re.sub(r"[UZOB]", "X", edited_protein_sequence)
             edited_protein_sequence_list.append(edited_protein_sequence)
             value = line[2].replace("[", "").replace("]", "")
-            edited_eval_list.append(float(value))
 
-    neo_input_protein_sequence_list, neo_input_eval_list, neo_edited_protein_sequence_list, neo_edited_eval_list = [], [], [], []
-    for a,b,c,d in zip(input_protein_sequence_list, input_eval_list, edited_protein_sequence_list, edited_eval_list):
+    neo_input_protein_sequence_list, neo_edited_protein_sequence_list = [], []
+    for a,c in zip(input_protein_sequence_list, edited_protein_sequence_list):
         if len(c) == 0:
             continue
-        if len(a) >= 512:
-            continue
-        if len(c) >= 512:
-            continue
         neo_input_protein_sequence_list.append(a)
-        neo_input_eval_list.append(b)
         neo_edited_protein_sequence_list.append(c)
-        neo_edited_eval_list.append(d)
-    input_protein_sequence_list, input_eval_list, edited_protein_sequence_list, edited_eval_list = neo_input_protein_sequence_list, neo_input_eval_list, neo_edited_protein_sequence_list, neo_edited_eval_list
+    input_protein_sequence_list, edited_protein_sequence_list = neo_input_protein_sequence_list, neo_edited_protein_sequence_list
 
-    #################### compare ####################
-    eval_hit, total = 0, 0
-    for input_protein, input_eval, edited_protein, output_eval in zip(input_protein_sequence_list, input_eval_list, edited_protein_sequence_list, edited_eval_list):
-        total += 1
-        
-        if args.text_prompt_id in [101]:
-            if output_eval > input_eval:
-                eval_hit += 1
-        elif args.text_prompt_id in [201]:
-            if output_eval < input_eval:
-                eval_hit += 1
-    if total > 0:
-        eval_hit_ratio = 100. * eval_hit / total
-        print("#1 eval hit: {}".format(eval_hit))
-        print("#1 eval total: {}".format(total))
-        print("#1 eval hit ratio: {}".format(eval_hit_ratio))
-
-    total = len(dataset)
-    eval_hit_ratio = 100. * eval_hit / total
-    print("eval hit: {}".format(eval_hit))
-    print("eval total: {}".format(total))
-    print("eval hit ratio: {}".format(eval_hit_ratio))
-    ##################################################
-
-    input_PDB_list, idx_list = evaluate_folding(input_protein_sequence_list)
+    input_PDB_list, idx_list, input_plddt_list = evaluate_folding(input_protein_sequence_list)
     PDB_output_folder = os.path.join(args.output_folder, "input_PDB")
     os.makedirs(PDB_output_folder, exist_ok = True)
-    input_DSSP_list, input_valid_idx_set = save_and_evaluate_PDB_list(input_PDB_list, idx_list, PDB_output_folder)
-    print("valid input (w/ secondary structure)", len(input_valid_idx_set))
+    save_PDB_list(input_PDB_list, idx_list, PDB_output_folder)
 
-    output_PDB_list, idx_list = evaluate_folding(edited_protein_sequence_list)
+    output_PDB_list, idx_list, output_plddt_list = evaluate_folding(edited_protein_sequence_list)
     PDB_output_folder = os.path.join(args.output_folder, "output_PDB")
     os.makedirs(PDB_output_folder, exist_ok = True)
-    output_DSSP_list, output_valid_idx_set = save_and_evaluate_PDB_list(output_PDB_list, idx_list, PDB_output_folder)
-    print("valid output (w/ secondary structure)", len(output_valid_idx_set))
+    save_PDB_list(output_PDB_list, idx_list, PDB_output_folder)
 
     ##### compare
     evaluation_output_file_path = os.path.join(args.output_folder, "step_01_evaluate.txt")
     f = open(evaluation_output_file_path, 'w')
-    eval_hit, DSSP_hit, total = 0, 0, 0
-    for input_protein, input_eval, input_DSSP, edited_protein, output_eval, output_DSSP, idx in zip(input_protein_sequence_list, input_eval_list, input_DSSP_list, edited_protein_sequence_list, edited_eval_list, output_DSSP_list, idx_list):
-        if not (idx in input_valid_idx_set and idx in output_valid_idx_set):
-            print("invalid", idx, input_valid_idx_set, output_valid_idx_set)
-            continue
-        print('input,{},{},{}'.format(input_protein, input_eval, input_DSSP), file=f)
-        print('output,{},{},{}'.format(edited_protein, output_eval, output_DSSP), file=f)
+    plddt_hit, total = 0, 0
+    for input_protein, input_plddt, edited_protein, output_plddt in zip(input_protein_sequence_list, input_plddt_list, edited_protein_sequence_list, output_plddt_list):
+        print('input,{},{}'.format(input_protein, input_plddt), file=f)
+        print('output,{},{}'.format(edited_protein, output_plddt), file=f)
 
         total += 1
         
         if args.text_prompt_id in [101]:
-            if output_DSSP[args.editing_task] > input_DSSP[args.editing_task]:
-                DSSP_hit += 1
+            if output_plddt > input_plddt:
+                plddt_hit += 1
         elif args.text_prompt_id in [201]:
-            if output_DSSP[args.editing_task] < input_DSSP[args.editing_task]:
-                DSSP_hit += 1
+            if output_plddt < input_plddt:
+                plddt_hit += 1
+        else:
+            raise ValueError("No valid prompt id {}".format(args.text_prompt_id))
 
     if total > 0:
-        DSSP_hit_ratio = 100. * DSSP_hit / total
-        print("#1 DSSP hit: {}".format(DSSP_hit))
-        print("#1 DSSP total: {}".format(total))
-        print("#1 DSSP hit ratio: {}".format(DSSP_hit_ratio))
+        plddt_hit_ratio = 100. * plddt_hit / total
+        print("#1 pLDDT hit: {}".format(plddt_hit))
+        print("#1 pLDDT total: {}".format(total))
+        print("#1 pLDDT hit ratio: {}".format(plddt_hit_ratio))
 
     total = len(dataset)
-    DSSP_hit_ratio = 100. * DSSP_hit / total
-    print("DSSP hit: {}".format(DSSP_hit))
-    print("DSSP total: {}".format(total))
-    print("DSSP hit ratio: {}".format(DSSP_hit_ratio))
 
-    """
-    ../../output/ProteinDT/ProtBERT_BFD-512-1e-5-1e-1-text-512-1e-5-1e-1-EBM_NCE-0.1-batch-9-gpu-8-epoch-5/step_06_AE_1e-3_3/downstream_Editing_latent_optimization/alpha_prompt_101_lambda_0.1_num_repeat_16_oracle_text_T_2
-    cp ../../output/ProteinDT/ProtBERT_BFD-512-1e-5-1e-1-text-512-1e-5-1e-1-EBM_NCE-0.1-batch-9-gpu-8-epoch-5/step_06_AE_1e-3_3/downstream_Editing_latent_optimization/alpha_prompt_101_lambda_0.1_num_repeat_16_oracle_text_T_2 .
-
-    python step_01_evaluate_structure.py --num_workers=0 --batch_size=4 --editing_task=alpha --text_prompt_id=101  --output_folder=alpha_prompt_101_lambda_0.1_num_repeat_16_oracle_text_T_2 --output_text_file_path=alpha_prompt_101_lambda_0.1_num_repeat_16_oracle_text_T_2/step_01_editing.txt
-    """
+    plddt_hit_ratio = 100. * plddt_hit / total
+    print("pLDDT hit: {}".format(plddt_hit))
+    print("pLDDT total: {}".format(total))
+    print("pLDDT hit ratio: {}".format(plddt_hit_ratio))

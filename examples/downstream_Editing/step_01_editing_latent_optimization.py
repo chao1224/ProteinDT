@@ -417,12 +417,12 @@ if __name__ == "__main__":
                 if output_eval < input_eval:
                     hit += 1
 
-        elif args.editing_task in ["Villin", "Pin1", "hYAP65"]:
-            if args.text_prompt_id in [101, 102]:
-                if output_eval < input_eval:
-                    hit += 1
-            elif args.text_prompt_id in [201, 202]:
+        elif args.editing_task in ["Villin", "Pin1"]:
+            if args.text_prompt_id in [101]:
                 if output_eval > input_eval:
+                    hit += 1
+            elif args.text_prompt_id in [201]:
+                if output_eval < input_eval:
                     hit += 1
 
     hit_ratio = 100. * hit / total

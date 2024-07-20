@@ -54,7 +54,7 @@ pip install fair-esm[esmfold]==2.0.0  --no-dependencies # Override deepspeed==0.
 pip install 'dllogger @ git+https://github.com/NVIDIA/dllogger.git'
 pip install 'openfold @ git+https://github.com/aqlaboratory/openfold.git@4b41059694619831a7db195b7e0988fc4ff3a307'
 
-conda install mdtraj biopython -c conda-forge -yq
+conda install -c conda-forge -yq mdtraj
 
 # for ProteinDT
 pip install .

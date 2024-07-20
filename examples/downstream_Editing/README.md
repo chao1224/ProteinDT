@@ -54,9 +54,21 @@ cp ../../output/downstream_TAPE/stability/ProtBERT_BFD/3-3e-5-5-2-16-0.08/pytorc
     datasets_and_checkpoints/stability/oracle/pytorch_model_stability.bin
 ```
 
-## 3 Peptide Editing
+## 3 Region Editing
 
 ### 3.1 Dataset
+
+Refer to this [paper](https://www.sciencedirect.com/science/article/pii/S0959440X22000513#appsec1), the excel data in the SI.
+
+Download the SI excel data to `datasets_and_checkpoints/region`, then:
+
+```
+python prepare_01_region.py
+```
+
+## 4 Peptide Editing
+
+### 4.1 Dataset
 
 Refer to this [GitHub link](https://github.com/t7morgen/misato-dataset).
 
@@ -81,7 +93,7 @@ Back to this folder, and do the following:
 python prepare_01_peptide_editing_raw_and_processed_data.py
 ```
 
-### 3.2 Oracle Evaluator
+### 4.2 Oracle Evaluator
 
 We will have to train an oracle model by ourselves + docking.
 

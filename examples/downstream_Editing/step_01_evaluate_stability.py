@@ -60,7 +60,7 @@ def evaluate_folding(protein_sequence_list):
         print("protein_sequence", protein_sequence)
 
         tokenized_input = folding_tokenizer(protein_sequence, return_tensors="pt", add_special_tokens=False)['input_ids']
-        tokenized_input = tokenized_input.cuda()
+        tokenized_input = tokenized_input.to(device)
 
         output = folding_model(tokenized_input)
         plddt_value = output["plddt"].squeeze(0)
@@ -118,14 +118,14 @@ if __name__ == "__main__":
     
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
-    folding_tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1")
-    folding_model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", low_cpu_mem_usage=True).to(device)
+    folding_tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1", cache_dir="../../data/temp_pretrained_ESMFold")
+    folding_model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", cache_dir="../../data/temp_pretrained_ESMFold").to(device)
     
     ##### Load pretrained protein model
     if args.protein_backbone_model == "ProtBERT":
-        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
+        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False, cache_dir="../../data/temp_pretrained_ProtBert")
     elif args.protein_backbone_model == "ProtBERT_BFD":
-        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False)
+        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False, cache_dir="../../data/temp_pretrained_ProtBert_BFD")
     protein_dim = 1024
     
     ##### load protein sequence
@@ -186,16 +186,18 @@ if __name__ == "__main__":
 
         total += 1
         
-        if args.text_prompt_id in [101, 102]:
+        if args.text_prompt_id in [101]:
             if output_eval > input_eval:
                 eval_hit += 1
             if output_plddt > input_plddt:
                 plddt_hit += 1
-        elif args.text_prompt_id in [201, 202]:
+        elif args.text_prompt_id in [201]:
             if output_eval < input_eval:
                 eval_hit += 1
             if output_plddt < input_plddt:
                 plddt_hit += 1
+        else:
+            raise ValueError("No valid prompt id {}".format(args.text_prompt_id))
 
     if total > 0:
         eval_hit_ratio = 100. * eval_hit / total

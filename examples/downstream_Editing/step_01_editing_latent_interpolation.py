@@ -271,12 +271,7 @@ if __name__ == "__main__":
     if args.decoder_distribution in ["T5Decoder"]:
         protein_decoder_tokenizer = T5Tokenizer.from_pretrained("Rostlab/prot_t5_xl_uniref50", do_lower_case=False, chache_dir="../../data/temp_pretrained_t5_base")
     else:
-        protein_decoder_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False, chache_dir="../../data/temp_pretrained_PotBert")
-    # print("protein_decoder_tokenizer pad_token_id", protein_decoder_tokenizer.pad_token_id)
-    # print("protein_decoder_tokenizer sep_token_id", protein_decoder_tokenizer.sep_token_id)
-    # print("protein_decoder_tokenizer eos_token_id", protein_decoder_tokenizer.eos_token_id)
-    # print(CLAP_protein_tokenizer.get_vocab())
-    # print(protein_decoder_tokenizer.get_vocab())
+        protein_decoder_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False, chache_dir="../../data/temp_pretrained_ProtBert")
 
     ##### Load pretrained decoder model
     if args.decoder_distribution == "MultinomialDiffusion":
@@ -372,12 +367,12 @@ if __name__ == "__main__":
                 if output_eval < input_eval:
                     hit += 1
 
-        elif args.editing_task in ["Villin", "Pin1", "hYAP65"]:
-            if args.text_prompt_id in [101, 102]:
-                if output_eval < input_eval:
-                    hit += 1
-            elif args.text_prompt_id in [201, 202]:
+        elif args.editing_task in ["Villin", "Pin1"]:
+            if args.text_prompt_id in [101]:
                 if output_eval > input_eval:
+                    hit += 1
+            elif args.text_prompt_id in [201]:
+                if output_eval < input_eval:
                     hit += 1
 
     hit_ratio = 100. * hit / total
