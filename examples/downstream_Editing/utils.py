@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 from ProteinDT.TAPE_benchmark.models import BertForTokenClassification2, BertForSequenceClassification2
 import matplotlib
 import matplotlib.pyplot as plt
@@ -27,27 +27,18 @@ text_prompt_dict = {
     },
     "Villin": {
         101: "modify the amino acid sequence to have higher stability",
-        102: "modify the amino acid sequence to have fewer intrinsically disordered regions",
         201: "modify the amino acid sequence to have lower stability",
-        202: "modify the amino acid sequence to have more intrinsically disordered regions",
         "data_folder": "datasets_and_checkpoints/stability/Villin",
     },
     "Pin1": {
         101: "modify the amino acid sequence to have higher stability",
-        102: "modify the amino acid sequence to have fewer intrinsically disordered regions",
         201: "modify the amino acid sequence to have lower stability",
-        202: "modify the amino acid sequence to have more intrinsically disordered regions",
         "data_folder": "datasets_and_checkpoints/stability/Pin1",
     },
-    "hYAP65": {
-        101: "modify the amino acid sequence to have higher stability",
-        102: "modify the amino acid sequence to have fewer intrinsically disordered regions",
-        201: "modify the amino acid sequence to have lower stability",
-        202: "modify the amino acid sequence to have more intrinsically disordered regions",
-        "data_folder": "datasets_and_checkpoints/stability/hYAP65",
-    },
-    "stability": {
-        "data_folder": "datasets_and_checkpoints/stability_test"
+    "region": {
+        101: "modify the amino acid sequence to have more ordered regions",
+        201: "modify the amino acid sequence to have more disordered regions",
+        "data_folder": "datasets_and_checkpoints/region",
     },
     "peptide_binding": {
         101: "modify the peptide amino acid sequence to have higher binding affinity with the target protein. The target protein satisfies the following property. {}",
@@ -126,12 +117,15 @@ class ProteinSeqDataset(Dataset):
 
 
 def load_oracle_evaluator(editing_task, device, input_model_path=None):
+    cache_dir = "../../data/temp_pretrained_ProtBert_BFD"
+    
     if editing_task in ["alpha", "beta"]:
         num_labels = 3
         eval_prediction_model = BertForTokenClassification2.from_pretrained(
             "Rostlab/prot_bert_bfd",
             mean_output=True,
             num_labels=num_labels,
+            cache_dir=cache_dir,
         )
         if input_model_path is None:
             input_model_path = os.path.join("datasets_and_checkpoints/structure/oracle/pytorch_model_ss3.bin")
@@ -142,6 +136,7 @@ def load_oracle_evaluator(editing_task, device, input_model_path=None):
             "Rostlab/prot_bert_bfd",
             mean_output=True,
             num_labels=num_labels,
+            cache_dir=cache_dir,
         )
         if input_model_path is None:
             input_model_path = os.path.join("datasets_and_checkpoints/stability/oracle/pytorch_model_stability.bin")
@@ -153,15 +148,20 @@ def load_oracle_evaluator(editing_task, device, input_model_path=None):
             "Rostlab/prot_bert_bfd",
             mean_output=True,
             num_labels=num_labels,
+            cache_dir=cache_dir,
         )
         if input_model_path is None:
             input_model_path = os.path.join("datasets_and_checkpoints/stability/oracle/pytorch_model_stability.bin")
 
+    elif editing_task == "region":
+        eval_prediction_model = None
+
     print("Loading protein model from {}...".format(input_model_path))
-    state_dict = torch.load(input_model_path, map_location='cpu')
-    eval_prediction_model.load_state_dict(state_dict)
-    eval_prediction_model = eval_prediction_model.to(device)
-    eval_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False)
+    if eval_prediction_model is not None:
+        state_dict = torch.load(input_model_path, map_location='cpu')
+        eval_prediction_model.load_state_dict(state_dict)
+        eval_prediction_model = eval_prediction_model.to(device)
+    eval_protein_tokenizer = BertTokenizerFast.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False, cache_dir=cache_dir)
     return eval_prediction_model, eval_protein_tokenizer
 
 
@@ -200,7 +200,8 @@ def load_editing_dataset_and_loader(args, eval_protein_tokenizer):
 
 @torch.no_grad()
 def evaluate(dataloader, eval_prediction_model, device, args):
-    eval_prediction_model.eval()
+    if eval_prediction_model is not None:
+        eval_prediction_model.eval()
 
     L = tqdm(dataloader)
     result_list = []
@@ -209,18 +210,20 @@ def evaluate(dataloader, eval_prediction_model, device, args):
         protein_sequence_input_ids = batch["protein_sequence_input_ids"].to(device)
         protein_sequence_attention_mask = batch["protein_sequence_attention_mask"].to(device)
         
-        output = eval_prediction_model(protein_sequence_input_ids, protein_sequence_attention_mask)
-        logits = output.logits
+        if eval_prediction_model is not None:
+            output = eval_prediction_model(protein_sequence_input_ids, protein_sequence_attention_mask)
+            logits = output.logits
 
-        if args.editing_task in ["alpha", "beta"]:
-            pred = logits.argmax(dim=-1, keepdim=False)
-            pred = torch.where(protein_sequence_attention_mask==1, pred, -1)
-            pred = (pred == text_prompt_dict[args.editing_task]["target_label"]).sum(-1)
+            if args.editing_task in ["alpha", "beta"]:
+                pred = logits.argmax(dim=-1, keepdim=False)
+                pred = torch.where(protein_sequence_attention_mask==1, pred, -1)
+                pred = (pred == text_prompt_dict[args.editing_task]["target_label"]).sum(-1)
+            else:
+                pred = logits
+            result_list.append(pred.detach().cpu().numpy())
 
         else:
-            pred = logits
-
-        result_list.append(pred.detach().cpu().numpy())
+            result_list.append(np.array([0 for _ in range(len(protein_sequence_input_ids))]))
 
     result_list = np.concatenate(result_list)
     return result_list
@@ -250,19 +253,3 @@ def slerp(theta, start, end):
     so = torch.sin(omega)
     res = (torch.sin((1.0-theta)*omega)/so).unsqueeze(1) * start + (torch.sin(theta*omega)/so).unsqueeze(1) * end
     return res
-
-
-if __name__ == "__main__":
-    start = torch.Tensor([[0, 0, 0], [1, 1, 1]])
-    end = torch.Tensor([[1, 1, 1], [2, 2, 2]])
-    
-    start = torch.Tensor([[1, 1, 1], [2, 2, 2]])
-    end = torch.Tensor([[3, 3, 3], [6, 6, 6]])
-    
-    start = torch.Tensor([[1, 1, 1], [1, 2, 2]])
-    end = torch.Tensor([[2, 2, 2], [6, 6, 6]])
-
-    theta_list = [0, 0.1, 0.5, 0.9, 1]
-    for theta in theta_list:
-        interpolation = slerp(theta, start, end)
-        print(theta, interpolation)

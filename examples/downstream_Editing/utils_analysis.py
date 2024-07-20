@@ -1,16 +1,13 @@
 
-task_list = ["alpha", "beta", "Villin", "Pin1", "peptide_binding"]
+task_list = ["alpha", "beta", "Villin", "Pin1", "region", "peptide_binding"]
 
 
 text_prompt_dict = {
     "alpha": [101, 201],
     "beta": [101, 201],
-    # "Villin": [101, 102, 201, 202],
-    # "Pin1": [101, 102, 201, 202],
-    # "hYAP65": [101, 102, 201, 202],
     "Villin": [101, 201],
     "Pin1": [101, 201],
-    "hYAP65": [101, 201],
+    "region": [101, 201],
     "peptide_binding": [101, 201],
 }
 
@@ -24,8 +21,8 @@ def prase_hit_ratio(filename):
             line = f.readline()
             if not line:
                 break
-            
             line = line.strip()
+            
             if line.startswith("hit:"):
                 hit = int(line.split(":")[1].strip())
             elif line.startswith("total:"):
@@ -51,7 +48,8 @@ def prase_hit_ratio(filename):
                 second_hit = int(line.split(":")[1].strip())
             elif line.startswith("pLDDT total:"):
                 second_total = int(line.split(":")[1].strip())
-                assert total == second_total
+                if total is not None:
+                    assert total == second_total
             elif line.startswith("pLDDT hit ratio:"):
                 second_hit_ratio = float(line.split(":")[1].strip())
     except:

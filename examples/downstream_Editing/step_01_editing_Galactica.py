@@ -32,14 +32,14 @@ def parse_Galatica_result(text_prompt, result):
 
 
 @torch.no_grad()
-def inference_Galactica(dataloader, mutation_number):
+def inference_Galactica(dataloader):
     if args.verbose:
         L = tqdm(dataloader)
     else:
         L = dataloader
 
-    galactica_tokenizer = AutoTokenizer.from_pretrained("facebook/galactica-1.3b")
-    galactica_model = OPTForCausalLM.from_pretrained("facebook/galactica-1.3b", device_map="auto")
+    galactica_tokenizer = AutoTokenizer.from_pretrained("facebook/galactica-1.3b", cache_dir="../../data/temp_Galactica")
+    galactica_model = OPTForCausalLM.from_pretrained("facebook/galactica-1.3b", device_map="auto", cache_dir="../../data/temp_Galactica")
 
     input_protein_sequence_list, edited_protein_sequence_list = [], []
     for batch_idx, batch in enumerate(L):
@@ -83,7 +83,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=8)
-    parser.add_argument("--mutation_number", type=int, default=1)
 
     parser.add_argument("--editing_task", type=str, default="Villin")    
     parser.add_argument("--dataset_size", type=int, default=None)
@@ -114,9 +113,9 @@ if __name__ == "__main__":
     
     ##### Load pretrained protein model
     if args.protein_backbone_model == "ProtBERT":
-        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
+        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False, cache_dir="../../data/temp_pretrained_ProtBert")
     elif args.protein_backbone_model == "ProtBERT_BFD":
-        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False)
+        CLAP_protein_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert_bfd", do_lower_case=False, cache_dir="../../data/temp_pretrained_ProtBert_BFD")
     protein_dim = 1024
     
     ##### load protein sequence
@@ -128,7 +127,7 @@ if __name__ == "__main__":
         protein_max_sequence_len=args.protein_max_sequence_len)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-    input_protein_sequence_list, edited_protein_sequence_list = inference_Galactica(dataloader, mutation_number=args.mutation_number)
+    input_protein_sequence_list, edited_protein_sequence_list = inference_Galactica(dataloader)
 
     if args.output_folder is None:
         exit()
@@ -147,7 +146,7 @@ if __name__ == "__main__":
     output_dataset = ProteinSeqDataset(edited_protein_sequence_list, eval_protein_tokenizer, args.protein_max_sequence_len)
     output_dataloader = DataLoader(output_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     output_eval_list = evaluate(output_dataloader, eval_prediction_model, device, args)
-    file_path = os.path.join(args.output_folder, "{editing_task}_output_{mutation_number}.png".format(editing_task=args.editing_task, mutation_number=args.mutation_number))
+    file_path = os.path.join(args.output_folder, "{editing_task}_output_1.png".format(editing_task=args.editing_task))
     analyze(output_eval_list, args, file_path)
 
 
@@ -170,12 +169,12 @@ if __name__ == "__main__":
                 if output_eval < input_eval:
                     hit += 1
 
-        elif args.editing_task in ["Villin", "Pin1", "hYAP65"]:
-            if args.text_prompt_id in [101, 102]:
-                if output_eval < input_eval:
-                    hit += 1
-            elif args.text_prompt_id in [201, 202]:
+        elif args.editing_task in ["Villin", "Pin1"]:
+            if args.text_prompt_id in [101]:
                 if output_eval > input_eval:
+                    hit += 1
+            elif args.text_prompt_id in [201]:
+                if output_eval < input_eval:
                     hit += 1
 
     hit_ratio = 100. * hit / total
